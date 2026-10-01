@@ -1,0 +1,7 @@
+[sqlfluff]
+dialect = bigquery
+templater = jinja
+exclude_rules = LT12
+
+[sqlfluff:rules]
+capitalise_keywords = consistent

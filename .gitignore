@@ -1,0 +1,9 @@
+data/
+*.csv
+!data/.gitkeep
+.env
+*.json.key
+credentials/
+target/
+__pycache__/
+.DS_Store

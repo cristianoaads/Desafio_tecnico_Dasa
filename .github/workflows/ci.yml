@@ -1,0 +1,57 @@
+name: ci-sql-pipeline
+
+on:
+  pull_request:
+    branches: [main]
+
+env:
+  GCP_PROJECT_ID: saude-analytics-prod
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install sqlfluff
+      - run: sqlfluff lint sql/ --dialect bigquery
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # Slim CI: dataset isolado por PR — produção nunca é tocada
+      - name: Create isolated dataset
+        run: |
+          bq mk --dataset \
+            ${GCP_PROJECT_ID}:ci_pr_${{ github.event.number }} || true
+
+      - name: Build pipeline (isolated)
+        run: ./scripts/run_pipeline.sh ci_pr_${{ github.event.number }}
+
+      - name: Data quality tests
+        run: ./scripts/run_tests.sh ci_pr_${{ github.event.number }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy to production dataset
+        run: |
+          ./scripts/run_pipeline.sh saude_analytics
+          ./scripts/run_tests.sh saude_analytics
